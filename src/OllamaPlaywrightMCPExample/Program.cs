@@ -11,30 +11,66 @@ var clientTransport = new StdioClientTransport(new StdioClientTransportOptions
 	Arguments = ["-y", "@playwright/mcp@latest"]
 });
 
-var mcpClient = await McpClientFactory.CreateAsync(clientTransport);
+//var mcpClient = await McpClientFactory.CreateAsync(clientTransport);
+var mcpClient = await McpClient.CreateAsync(clientTransport);
+
 var tools = await mcpClient.ListToolsAsync();
 ChatOptions chatOptions = new()
 {
-	Tools = tools.ToArray()
+	Tools = tools.ToArray(),
+	Temperature = 0.1f // Lower temperature for more focused, deterministic responses
 };
 
-//string modelId = "qwen3:8b";
-//string modelId = "lfm2.5-thinking:latest"; fast, calls browser, does not understand reponse
-//string modelId = "qwen3-vl:2b"; //does not really call the tools
-string modelId = "ministral-3:8b"; //works
+//string modelId = "qwen2.5:14b"; // Try a larger model if available, or qwen2.5:7b
+//string modelId = "llama3.1:latest"; // Generally good instruction following
+//string modelId = "ministral-3:8b";
+string modelId = "qwen2.5:7b"; // Switching to Qwen 2.5 which often handles context better than Ministral
+							   // 
 var ollama = new OllamaApiClient(new Uri("http://localhost:11434/"), modelId);
 var chatClient = new ChatClientBuilder(ollama)
 	.UseFunctionInvocation()
 	.Build();
 
-await foreach (var update in chatClient.GetStreamingResponseAsync("1) navigate to url https://www.orf.at 2) extract the 3 top news headlines of heading: 'Ausland' 3) only show me the top 3 headlines ignore logs and errors.", chatOptions))
+List<ChatMessage> messages = new()
 {
+	new ChatMessage(ChatRole.System, "You are a news extractor. Your ONLY job is to extract headlines. You are NOT a debugger. You are NOT a website analyzer. Ignore all console logs, errors, and HTML structure details."),
+	new ChatMessage(ChatRole.User, @"GOAL: Extract 3 headlines from the 'Ausland' section of orf.at.
+
+IMPORTANT: The 'navigate' tool ONLY returns console logs. It does NOT return the page text.
+You MUST perform these steps in order:
+
+STEP 1: Navigate to https://www.orf.at
+STEP 2: Call the 'evaluate' tool with the javascript ""document.body.innerText"" to get the actual text content of the page.
+STEP 3: Read the text content from Step 2 (ignore the logs from Step 1).
+STEP 4: Find the 'Ausland' section in that text and extract the top 3 headlines.
+
+OUTPUT RULES:
+- Output ONLY the 3 headlines.
+- Do NOT summarize the console logs.
+- Do NOT explain what you found.
+
+Final Answer Format:
+- Headline 1
+- Headline 2
+- Headline 3")
+};
+
+await foreach (var update in chatClient.GetStreamingResponseAsync(messages, chatOptions))
+{
+	// Only log tool calls if you want to see debugging info
 	LogToolCalls(update);
 
-	// Write regular text content
-	Console.Write(update.ToString());
+	// Only write text content (not tool calls/results)
+	if (update.Contents.Any(c => c is TextContent))
+	{
+		foreach (var content in update.Contents.OfType<TextContent>())
+		{
+			Console.Write(content.Text);
+		}
+	}
 }
 
+// Uncomment the LogToolCalls line above if you want to see debugging information about tool calls
 static void LogToolCalls(ChatResponseUpdate update)
 {
 	// Log tool calls and their results in color
