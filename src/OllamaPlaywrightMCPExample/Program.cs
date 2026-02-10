@@ -3,6 +3,8 @@ using ModelContextProtocol.Client;
 using OllamaSharp;
 using System.Text.Json;
 
+Console.WriteLine("Starting Ollama Playwright MCP Example");
+
 //https://github.com/microsoft/playwright-mcp
 var clientTransport = new StdioClientTransport(new StdioClientTransportOptions
 {
@@ -23,9 +25,10 @@ ChatOptions chatOptions = new()
 
 //string modelId = "qwen2.5:14b"; // Try a larger model if available, or qwen2.5:7b
 //string modelId = "llama3.1:latest"; // Generally good instruction following
-//string modelId = "ministral-3:8b";
-string modelId = "qwen2.5:7b"; // Switching to Qwen 2.5 which often handles context better than Ministral
-							   // 
+string modelId = "ministral-3:8b"; // worked on macbook air
+//string modelId = "qwen2.5:7b"; // Switching to Qwen 2.5 which often handles context better than Ministral
+//string modelId = "gpt-oss:20b";
+ 
 var ollama = new OllamaApiClient(new Uri("http://localhost:11434/"), modelId);
 var chatClient = new ChatClientBuilder(ollama)
 	.UseFunctionInvocation()
