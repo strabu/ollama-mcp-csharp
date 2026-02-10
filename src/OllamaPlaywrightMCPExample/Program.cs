@@ -23,12 +23,18 @@ ChatOptions chatOptions = new()
 	Temperature = 0.1f // Lower temperature for more focused, deterministic responses
 };
 
+//string modelId = "ministral-3:14b"; //worked on macbook air, 12GB with low context, 15GB with 32k context
+string modelId = "ministral-3:8b"; // worked on macbook air, 11GB with 32k context and quite fast
+
+//string modelId = "devstral-small-2:latest"; //HTTP-Client timeout after 100 sec
+
+//string modelId = "glm-4.7-flash:latest"; //HTTP-Client timeoout, fits in ram on macbook air 24GB (sudo sysctl iogpu.wired_limit_mb=21000)
+//string modelId = "nemotron-3-nano:latest"; //25GB does not fit in ram on macbook air 24GB
 //string modelId = "qwen2.5:14b"; // Try a larger model if available, or qwen2.5:7b
 //string modelId = "llama3.1:latest"; // Generally good instruction following
-string modelId = "ministral-3:8b"; // worked on macbook air
 //string modelId = "qwen2.5:7b"; // Switching to Qwen 2.5 which often handles context better than Ministral
 //string modelId = "gpt-oss:20b";
- 
+
 var ollama = new OllamaApiClient(new Uri("http://localhost:11434/"), modelId);
 var chatClient = new ChatClientBuilder(ollama)
 	.UseFunctionInvocation()
