@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.AI;
 using ModelContextProtocol.Client;
 using OllamaSharp;
+using OllamaSharp.Models;
 using System.Text.Json;
 
 Console.WriteLine("Starting Ollama Playwright MCP Example");
@@ -38,6 +39,7 @@ string modelId = "ministral-3:8b"; // worked on macbook air, 11GB with 32k conte
 var ollama = new OllamaApiClient(new Uri("http://localhost:11434/"), modelId);
 
 var chatClient = new ChatClientBuilder(ollama)
+	.ConfigureOptions(c => c.AddOllamaOption(OllamaOption.NumCtx, 16384))
 	.UseFunctionInvocation()
 	.Build();
 
