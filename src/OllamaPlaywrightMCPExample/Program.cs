@@ -20,7 +20,7 @@ var tools = await mcpClient.ListToolsAsync();
 ChatOptions chatOptions = new()
 {
 	Tools = tools.ToArray(),
-	Temperature = 0.1f // Lower temperature for more focused, deterministic responses
+	Temperature = 0.1f // Lower temperature for more focused, deterministic responses	
 };
 
 //string modelId = "ministral-3:14b"; //worked on macbook air, 12GB with low context, 15GB with 32k context
@@ -36,6 +36,7 @@ string modelId = "ministral-3:8b"; // worked on macbook air, 11GB with 32k conte
 //string modelId = "gpt-oss:20b";
 
 var ollama = new OllamaApiClient(new Uri("http://localhost:11434/"), modelId);
+
 var chatClient = new ChatClientBuilder(ollama)
 	.UseFunctionInvocation()
 	.Build();
@@ -43,7 +44,7 @@ var chatClient = new ChatClientBuilder(ollama)
 List<ChatMessage> messages = new()
 {
 	new ChatMessage(ChatRole.System, "You are a news extractor. Your ONLY job is to extract headlines. You are NOT a debugger. You are NOT a website analyzer. Ignore all console logs, errors, and HTML structure details."),
-	new ChatMessage(ChatRole.User, @"GOAL: Extract 3 headlines from the 'Ausland' section of orf.at.
+	new ChatMessage(ChatRole.User, @"GOAL: Extract all headlines from the 'Ausland' section.
 
 IMPORTANT: The 'navigate' tool ONLY returns console logs. It does NOT return the page text.
 You MUST perform these steps in order:
@@ -51,17 +52,19 @@ You MUST perform these steps in order:
 STEP 1: Navigate to https://www.orf.at
 STEP 2: Call the 'evaluate' tool with the javascript ""document.body.innerText"" to get the actual text content of the page.
 STEP 3: Read the text content from Step 2 (ignore the logs from Step 1).
-STEP 4: Find the 'Ausland' section in that text and extract the top 3 headlines.
+STEP 4: Find the 'Ausland' section in that text and extract the headlines.
 
 OUTPUT RULES:
-- Output ONLY the 3 headlines.
+- Output ONLY the headlines.
 - Do NOT summarize the console logs.
 - Do NOT explain what you found.
 
 Final Answer Format:
 - Headline 1
 - Headline 2
-- Headline 3")
+- Headline 3
+- Headline n
+")
 };
 
 await foreach (var update in chatClient.GetStreamingResponseAsync(messages, chatOptions))
