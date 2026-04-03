@@ -46,8 +46,40 @@ static string RunShellCommand(string command)
 	Console.ResetColor();
 	process.WaitForExit(TimeSpan.FromSeconds(60));
 
+	// Auto-handle consent dialogs after browser navigation
+	if (command.Contains("agent-browser open") && stdout.Contains("consent", StringComparison.OrdinalIgnoreCase))
+	{
+		Console.ForegroundColor = ConsoleColor.Magenta;
+		Console.WriteLine("[System] Detected consent page, auto-dismissing...");
+		Console.ResetColor();
+
+		var consentResult = RunConsentDismissal();
+		stdout += "\n[System Auto-Consent] " + consentResult;
+	}
+
 	var result = new { ExitCode = process.ExitCode, Stdout = stdout, Stderr = stderr };
 	return JsonSerializer.Serialize(result);
+}
+
+static string RunConsentDismissal()
+{
+	// Strategy 1: Set the Sourcepoint consent cookie and reload.
+	// Most consent frameworks (Sourcepoint, OneTrust, etc.) use cookies to track consent state.
+	// The _sp_su=true cookie tells Sourcepoint that the user has already consented.
+	// This bypasses the cross-origin iframe problem entirely.
+	string[] cookieCommands = [
+		"agent-browser cookies set --name _sp_su --value true --domain .derstandard.at --path /",
+		"agent-browser cookies set --name _sp_su --value true --domain .orf.at --path /",
+		"agent-browser cookies set --name _sp_su --value true --path /",
+	];
+
+	foreach (var cmd in cookieCommands)
+		RunShellCommand(cmd);
+
+	// Reload the page so it picks up the consent cookie
+	RunShellCommand("agent-browser reload");
+	RunShellCommand("agent-browser wait 3000");
+	return "Consent cookies set and page reloaded.";
 }
 
 ChatOptions chatOptions = new()
@@ -79,19 +111,19 @@ ALWAYS use the run_shell tool to execute commands when the user asks you to inte
 Be creative and use the shell to get information for answers. 
 
 When browsing the web:
-1. Use 'agent-browser open <url> && agent-browser wait --load networkidle' to navigate.
-2. ALWAYS run 'agent-browser snapshot' to see the page structure and find element references (e.g., [ref=e12]).
-3. Watch for consent-dialogs (GDPR/Cookies). If one appears, find the 'Accept' or 'Agree' button in the snapshot and click it using its reference ID (e.g., 'agent-browser click @e12').
-4. If a button is inside an iframe, look for its ref in the snapshot or use 'agent-browser eval' to click it via JavaScript.
-5. After clicking a consent button, run 'agent-browser snapshot' again to verify the dialog is gone before proceeding.
-
-With run_shell call 'agent-browser --help' first if you need to familiarize yourself with the browser-tool."),
+1. Use 'agent-browser open <url>' to navigate. Cookie/consent dialogs are handled automatically.
+2a. Run 'agent-browser screenshot [path]' to take a screenshot.
+2b. Run 'agent-browser snapshot' to see the page structure and find element references (e.g., [ref=e12]).
+3. Use 'agent-browser click @ref' to click elements by their reference ID from the snapshot.
+4. Use 'agent-browser get text @ref' to extract text from elements.
+5. IMPORTANT: After opening a page, always run 'agent-browser snapshot' to inspect the content and find what you need."),
 
 			
 	//new(ChatRole.User, "List files in the current directory")
 	//new(ChatRole.User, "What time is it?")
 	
-	new(ChatRole.User, "What are the tech-news headlines in derstandard.at? (accept/click consent if necessary)")
+	//new(ChatRole.User, "What are the tech-news headlines in derstandard.at? (accept/click consent if necessary)")
+	new(ChatRole.User, "Browse to derstandard.at? Take a screenshot from the page and tell me what the pictures on the page show.")
 
 	//new(ChatRole.User, "browse to derstandard.at, execute agent-browser screenshot page.png and tell me what you see on page.png")
 
@@ -105,11 +137,13 @@ while (true)
 	bool calledTool = false;
 	List<FunctionCallContent> functionCalls = [];
 	string fullText = "";
+	List<AIContent> fullContents = [];
 
 	await foreach (var update in chatClient.GetStreamingResponseAsync(messages, chatOptions))
 	{
 		foreach (var content in update.Contents)
 		{
+			fullContents.Add(content);
 			if (content is TextContent text)
 			{
 				Console.Write(text.Text);
@@ -131,8 +165,10 @@ while (true)
 
 	if (calledTool)
 	{
-		// Add the assistant's message with function calls to the history
-		messages.Add(new ChatMessage(ChatRole.Assistant, functionCalls.Cast<AIContent>().ToList()));
+		// Add the assistant's message with all contents (including reasoning) to the history
+		if (fullContents.Count == 0)
+			fullContents.Add(new TextContent("Calling tool..."));
+		messages.Add(new ChatMessage(ChatRole.Assistant, fullContents));
 
 		foreach (var item in functionCalls)
 		{
