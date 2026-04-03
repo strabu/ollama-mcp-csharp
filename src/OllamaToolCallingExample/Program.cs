@@ -5,6 +5,7 @@ using System.ComponentModel.Design;
 using System.Diagnostics;
 using System.Net.Http;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 
 static string RunShellCommand(string command)
 {	
@@ -45,41 +46,16 @@ static string RunShellCommand(string command)
 	Console.ResetColor();
 	process.WaitForExit(TimeSpan.FromSeconds(60));
 
-	return $"ExitCode: {process.ExitCode}\nStdout:\n{stdout}\nStderr:\n{stderr}";
+	var result = new { ExitCode = process.ExitCode, Stdout = stdout, Stderr = stderr };
+	return JsonSerializer.Serialize(result);
 }
-
-/*
-static string GetOsShellContext()
-{
-	if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return "Windows (cmd.exe: dir, type, cd, etc.)";
-	if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux)) return "Linux (bash: ls, cat, pwd, etc.)";
-	if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX)) return "macOS (bash: ls, cat, pwd, etc.)";
-	return RuntimeInformation.OSDescription;
-}
-*/
 
 ChatOptions chatOptions = new()
 {
 	Tools = [
-		/*
-		AIFunctionFactory.Create((string location, string unit) =>
-		{			
-			return DateTime.Now.DayOfWeek.ToString();
-		},
-		"get_current_day",
-		"Get the current day as a string"),
-
-		AIFunctionFactory.Create((string location, string unit) =>
-		{
-			return DateTime.Now.TimeOfDay.ToString();
-		},
-		"get_current_time",
-		"Get the current time"),
-		*/
 		AIFunctionFactory.Create((string command) => RunShellCommand(command),
 			"run_shell",
-			//$"You are on {GetOsShellContext()}. Execute a shell command (e.g. agent-browser open example.com, ls/dir, git status, pwd/cd, cat/type file.txt) and return exit code, stdout and stderr. Use for any shell command.")
-			$"Execute a shell command (e.g. agent-browser open example.com, agent-browser snapshot, agent-browser click @e2, ls/dir, git status, pwd/cd, cat/type file.txt) and return exit code, stdout and stderr. Use for any shell command.")
+			$"Execute a shell command (e.g. agent-browser --help, agent-browser open example.com, agent-browser snapshot, agent-browser click @e2, ls/dir, git status, pwd/cd, cat/type file.txt) and return exit code, stdout and stderr. Use for any shell command.")
 	]
 };
 
@@ -93,68 +69,97 @@ using var httpClient = new HttpClient(new DetailedHttpFailureHandler()) { BaseAd
 var ollama = new OllamaApiClient(httpClient, modelId);
 var chatClient = new ChatClientBuilder(ollama)
 	.ConfigureOptions(c => c.AddOllamaOption(OllamaOption.NumCtx, 16384))
-	.UseFunctionInvocation()
+	// .UseFunctionInvocation() // We will handle this manually
 	.Build();
-
-/*
-await foreach (var update in chatClient
-.GetStreamingResponseAsync("run_shell command: 'agent-browser' to open https://derstandard.at and tell me the 3 top international news headlines from today", chatOptions))
-{ Console.Write(update.ToString()); }
-*/
 
 List<ChatMessage> messages =
 [
-	//new(ChatRole.System, "You are a helpful assistant with access to tools. ALWAYS use the run_shell tool to execute commands when the user asks you to interact with the file system, run programs, or perform any task that requires shell access. Never refuse or say you cannot do something if a tool is available to accomplish it."),
-	/*
-	new(ChatRole.System, @"You are a helpful assistant with access to tools. 
-ALWAYS use the run_shell tool to execute commands when the user asks you to interact with the file system, run programs, or perform any task that requires shell access.
-Be creative and use the shell to get information for answers.
-Use lynx to browse the web."),
-	*/
 	new(ChatRole.System, @"You are a helpful assistant with access to tools. 
 ALWAYS use the run_shell tool to execute commands when the user asks you to interact with the file system, run programs, browse the web or perform any task that requires shell access.
 Be creative and use the shell to get information for answers. When browsing the web, watch for consent-dialogs and accept them by clicking the Acceppt-Buttons.
-With run_shell call 'agent-browser' to browse the web:
-	agent-browser open example.com
-	agent-browser snapshot                    # Get accessibility tree with refs
-	agent-browser click @e2                   # Click by ref from snapshot to get more details
-	agent-browser fill @e3 test@example.com   # Fill by ref
-	agent-browser get text @e1                # Get text by ref
-	agent-browser screenshot page.png
-	agent-browser close"),
+With run_shell call 'agent-browser --help' first to familiarize yourself with the browser-tool and then do follow up calls to 'agent-browser' to navigate and interact with the page."),
 
-
-//Use lynx to browse the web."),
-	
+			
 	//new(ChatRole.User, "List files in the current directory")
 	//new(ChatRole.User, "What time is it?")
 	
-	//new(ChatRole.User, "What are the tech-news headlines in derstandard.at? (accept/click consent if necessary)")
+	new(ChatRole.User, "What are the tech-news headlines in derstandard.at? (accept/click consent if necessary)")
 
-	new(ChatRole.User, "browse to derstandard.at, execute agent-browser screenshot page.png and tell me what you see on page.png")
-
+	//new(ChatRole.User, "browse to derstandard.at, execute agent-browser screenshot page.png and tell me what you see on page.png")
 
 	//new(ChatRole.User, "Get the News page from www.orf.at and make me a summary about Iran.")
 	//new(ChatRole.User, "What's in the latest 13F filing from Berkshire Hathaway?")
+
 ];
 
-await foreach (var update in chatClient.GetStreamingResponseAsync(messages, chatOptions))
-{ 
-	if (update != null)
-		Console.Write(update.ToString()); 
-}
-
-/*
-await foreach (var update in chatClient.GetStreamingResponseAsync("Which day is it today? We are in innsbruck", chatOptions))
+while (true)
 {
-	Console.Write(update.ToString());
-}
+	bool calledTool = false;
+	List<FunctionCallContent> functionCalls = [];
+	string fullText = "";
 
-await foreach (var update in chatClient.GetStreamingResponseAsync("What time is it in vienna?", chatOptions))
-{
-	Console.Write(update.ToString());
+	await foreach (var update in chatClient.GetStreamingResponseAsync(messages, chatOptions))
+	{
+		foreach (var content in update.Contents)
+		{
+			if (content is TextContent text)
+			{
+				Console.Write(text.Text);
+				fullText += text.Text;
+			}
+			else if (content is FunctionCallContent fcc)
+			{
+				functionCalls.Add(fcc);
+				calledTool = true;
+			}
+		}
+	}
+
+	if (calledTool)
+	{
+		// Add the assistant's message with function calls to the history
+		messages.Add(new ChatMessage(ChatRole.Assistant, functionCalls.Cast<AIContent>().ToList()));
+
+		foreach (var item in functionCalls)
+		{
+			string command = item.Arguments != null && item.Arguments.TryGetValue("command", out object? cmdObj) ? cmdObj?.ToString() ?? "" : "";
+			string toolResultJson = RunShellCommand(command);
+			
+			// Check if the command was a screenshot command
+			AIContent? imageContent = null;
+			if (command.Contains("screenshot"))
+			{
+				var parts = command.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+				for (int i = 0; i < parts.Length; i++)
+				{
+					if (parts[i] == "screenshot" && i + 1 < parts.Length)
+					{
+						string fileName = parts[i + 1];
+						if (File.Exists(fileName))
+						{
+							byte[] imageBytes = await File.ReadAllBytesAsync(fileName);
+							imageContent = new DataContent(imageBytes, "image/png");
+							Console.WriteLine($"\n[System] Attached image: {fileName}");
+						}
+						break;
+					}
+				}
+			}
+
+			var toolMessage = new ChatMessage(ChatRole.Tool, [new FunctionResultContent(item.CallId, toolResultJson)]);
+			if (imageContent != null)
+			{
+				toolMessage.Contents.Add(imageContent);
+			}
+			messages.Add(toolMessage);
+		}
+	}
+	else
+	{
+		messages.Add(new ChatMessage(ChatRole.Assistant, fullText));
+		break;
+	}
 }
-*/
 
 
 
