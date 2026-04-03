@@ -76,8 +76,16 @@ List<ChatMessage> messages =
 [
 	new(ChatRole.System, @"You are a helpful assistant with access to tools. 
 ALWAYS use the run_shell tool to execute commands when the user asks you to interact with the file system, run programs, browse the web or perform any task that requires shell access.
-Be creative and use the shell to get information for answers. When browsing the web, watch for consent-dialogs and accept them by clicking the Acceppt-Buttons.
-With run_shell call 'agent-browser --help' first to familiarize yourself with the browser-tool and then do follow up calls to 'agent-browser' to navigate and interact with the page."),
+Be creative and use the shell to get information for answers. 
+
+When browsing the web:
+1. Use 'agent-browser open <url> && agent-browser wait --load networkidle' to navigate.
+2. ALWAYS run 'agent-browser snapshot' to see the page structure and find element references (e.g., [ref=e12]).
+3. Watch for consent-dialogs (GDPR/Cookies). If one appears, find the 'Accept' or 'Agree' button in the snapshot and click it using its reference ID (e.g., 'agent-browser click @e12').
+4. If a button is inside an iframe, look for its ref in the snapshot or use 'agent-browser eval' to click it via JavaScript.
+5. After clicking a consent button, run 'agent-browser snapshot' again to verify the dialog is gone before proceeding.
+
+With run_shell call 'agent-browser --help' first if you need to familiarize yourself with the browser-tool."),
 
 			
 	//new(ChatRole.User, "List files in the current directory")
@@ -111,6 +119,12 @@ while (true)
 			{
 				functionCalls.Add(fcc);
 				calledTool = true;
+			}
+			else if (content is TextReasoningContent reasoning)
+			{
+				Console.ForegroundColor = ConsoleColor.Yellow;
+				Console.Write(reasoning.Text);
+				Console.ResetColor();
 			}
 		}
 	}
