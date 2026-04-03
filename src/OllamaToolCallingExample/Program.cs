@@ -100,7 +100,8 @@ var ollamaUri = new Uri("http://localhost:11434/");
 using var httpClient = new HttpClient(new DetailedHttpFailureHandler()) { BaseAddress = ollamaUri };
 var ollama = new OllamaApiClient(httpClient, modelId);
 var chatClient = new ChatClientBuilder(ollama)
-	.ConfigureOptions(c => c.AddOllamaOption(OllamaOption.NumCtx, 16384))
+	//.ConfigureOptions(c => c.AddOllamaOption(OllamaOption.NumCtx, 16384))
+	.ConfigureOptions(c => c.AddOllamaOption(OllamaOption.NumCtx, 32768))
 	// .UseFunctionInvocation() // We will handle this manually
 	.Build();
 
@@ -123,9 +124,11 @@ When browsing the web:
 	//new(ChatRole.User, "What time is it?")
 	
 	//new(ChatRole.User, "What are the tech-news headlines in derstandard.at? (accept/click consent if necessary)")
-	new(ChatRole.User, "Browse to derstandard.at? Take a screenshot from the page and tell me what the pictures on the page show.")
+	
+	//new(ChatRole.User, "Browse to derstandard.at? Take a screenshot from the page and tell me what the pictures on the page show.")
+	new(ChatRole.User, "Browse to derstandard.at/web ? Take a screenshot from the page and tell me what the pictures on the page show.")
 
-	//new(ChatRole.User, "browse to derstandard.at, execute agent-browser screenshot page.png and tell me what you see on page.png")
+//new(ChatRole.User, "Search yahoo finance for the latest SEC 13f-filing from Berkshire Hathaway.")
 
 	//new(ChatRole.User, "Get the News page from www.orf.at and make me a summary about Iran.")
 	//new(ChatRole.User, "What's in the latest 13F filing from Berkshire Hathaway?")
