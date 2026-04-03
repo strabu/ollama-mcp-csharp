@@ -197,11 +197,16 @@ while (true)
 			}
 
 			var toolMessage = new ChatMessage(ChatRole.Tool, [new FunctionResultContent(item.CallId, toolResultJson)]);
+			messages.Add(toolMessage);
+
 			if (imageContent != null)
 			{
-				toolMessage.Contents.Add(imageContent);
+				var userImageMessage = new ChatMessage(ChatRole.User, [
+					new TextContent("[System] Here is the screenshot you just took. Describe what you see in the pictures."),
+					imageContent
+				]);
+				messages.Add(userImageMessage);
 			}
-			messages.Add(toolMessage);
 		}
 	}
 	else
