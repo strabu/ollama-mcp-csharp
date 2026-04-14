@@ -6,6 +6,8 @@ using System.Diagnostics;
 using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using OllamaToolCallingExample;
+using OllamaToolCallingExample.Skills;
 
 static string RunShellCommand(string command)
 {	
@@ -61,6 +63,23 @@ static string RunShellCommand(string command)
 	return JsonSerializer.Serialize(result);
 }
 
+static string GetSkills()
+{
+	return "*browser*: use the local webbrowser\r\n*file*: read or write files";
+}
+
+static string LearnSkill(string command)
+{
+	return @"When browsing the web use run_shell and then:
+1. Use 'agent-browser open <url>' to navigate. Cookie/consent dialogs are handled automatically.
+2a. Run 'agent-browser screenshot [path]' to take a screenshot.
+2b. Run 'agent-browser snapshot' to see the page structure and find element references (e.g., [ref=e12]).
+3. Use 'agent-browser click @ref' to click elements by their reference ID from the snapshot.
+4. Use 'agent-browser get text @ref' to extract text from elements.
+5. IMPORTANT: After opening a page, always run 'agent-browser snapshot' to inspect the content and find what you need.";
+}
+
+
 static string RunConsentDismissal()
 {
 	// Strategy 1: Set the Sourcepoint consent cookie and reload.
@@ -85,11 +104,26 @@ static string RunConsentDismissal()
 ChatOptions chatOptions = new()
 {
 	Tools = [
+		/*
+		AIFunctionFactory.Create((string getSkills) => GetSkills(),
+			"get_skills",
+			$"Returns the list of ALL Capabilities"),
+		*/
+		AIFunctionFactory.Create((string learnSkillCommand) => LearnSkill(learnSkillCommand),
+			"learn_skill",
+			$"Returns the details for a skill and how to use it"),
+		
+		
 		AIFunctionFactory.Create((string command) => RunShellCommand(command),
 			"run_shell",
-			$"Execute a shell command (e.g. agent-browser --help, agent-browser open example.com, agent-browser snapshot, agent-browser click @e2, ls/dir, git status, pwd/cd, cat/type file.txt) and return exit code, stdout and stderr. Use for any shell command.")
+			$"Execute a shell command and return exit code, stdout and stderr. Use for any shell command."),
+		
 	]
 };
+
+
+//https://agentskills.io/client-implementation/adding-skills-support#frontmatter-extraction
+//https://github.com/dotnet/extensions/tree/main/src/Libraries/Microsoft.Extensions.AI.Abstractions
 
 //string modelId = "ministral-3:8b"; //the best
 //string modelId = "qwen3:8b";
@@ -100,24 +134,16 @@ var ollamaUri = new Uri("http://localhost:11434/");
 using var httpClient = new HttpClient(new DetailedHttpFailureHandler()) { BaseAddress = ollamaUri };
 var ollama = new OllamaApiClient(httpClient, modelId);
 var chatClient = new ChatClientBuilder(ollama)
-	//.ConfigureOptions(c => c.AddOllamaOption(OllamaOption.NumCtx, 16384))
-	.ConfigureOptions(c => c.AddOllamaOption(OllamaOption.NumCtx, 32768))
+	.ConfigureOptions(c => c.AddOllamaOption(OllamaOption.NumCtx, 16384))
+	//.ConfigureOptions(c => c.AddOllamaOption(OllamaOption.NumCtx, 32768))
 	// .UseFunctionInvocation() // We will handle this manually
+	.UseConsoleLogger()
+	.UseSkills(configure: c => c.ShellCommand = RunShellCommand)
 	.Build();
 
 List<ChatMessage> messages =
 [
-	new(ChatRole.System, @"You are a helpful assistant with access to tools. 
-ALWAYS use the run_shell tool to execute commands when the user asks you to interact with the file system, run programs, browse the web or perform any task that requires shell access.
-Be creative and use the shell to get information for answers. 
-
-When browsing the web:
-1. Use 'agent-browser open <url>' to navigate. Cookie/consent dialogs are handled automatically.
-2a. Run 'agent-browser screenshot [path]' to take a screenshot.
-2b. Run 'agent-browser snapshot' to see the page structure and find element references (e.g., [ref=e12]).
-3. Use 'agent-browser click @ref' to click elements by their reference ID from the snapshot.
-4. Use 'agent-browser get text @ref' to extract text from elements.
-5. IMPORTANT: After opening a page, always run 'agent-browser snapshot' to inspect the content and find what you need."),
+	new(ChatRole.System, $@"You are a helpful assistant with access to many tools and skills. Skills are **NOT** TOOLS. You *must* always call learn_skill(skillName) before you can use a skill. These are the skills (NOT tools): {GetSkills()}"),
 
 			
 	//new(ChatRole.User, "List files in the current directory")
@@ -135,34 +161,50 @@ When browsing the web:
 
 ];
 
+
+//while (true)
+//{
+	await foreach (var update in chatClient.GetStreamingResponseAsync(messages, chatOptions))
+	{
+		var u = update;
+		if (update.Role == ChatRole.Tool)
+		{
+			var re = (FunctionResultContent)update.Contents.First();
+			var rs = re.Result as string;
+			messages.Add(new ChatMessage(ChatRole.Tool, rs));
+		}
+		else if (update.Role == ChatRole.Assistant)
+		{
+			if (!string.IsNullOrEmpty(update.Text))
+			{
+				var rs = update.Text;
+				messages.Add(new ChatMessage(ChatRole.Assistant, rs));
+			}
+		}
+	}
+//}
+/*
 while (true)
 {
 	bool calledTool = false;
 	List<FunctionCallContent> functionCalls = [];
 	string fullText = "";
 	List<AIContent> fullContents = [];
-
+	
 	await foreach (var update in chatClient.GetStreamingResponseAsync(messages, chatOptions))
 	{
 		foreach (var content in update.Contents)
 		{
 			fullContents.Add(content);
 			if (content is TextContent text)
-			{
-				Console.Write(text.Text);
+			{		
 				fullText += text.Text;
 			}
 			else if (content is FunctionCallContent fcc)
 			{
 				functionCalls.Add(fcc);
 				calledTool = true;
-			}
-			else if (content is TextReasoningContent reasoning)
-			{
-				Console.ForegroundColor = ConsoleColor.Yellow;
-				Console.Write(reasoning.Text);
-				Console.ResetColor();
-			}
+			}		
 		}
 	}
 
@@ -175,6 +217,20 @@ while (true)
 
 		foreach (var item in functionCalls)
 		{
+			if (item.Name == "learn_skill")
+			{
+				string ls = item.Arguments != null && item.Arguments.TryGetValue("learnSkillCommand", out object? ler ) ? ler?.ToString() ?? "" : "";
+				var toolResult1 = LearnSkill(ls);
+				var toolMessage1 = new ChatMessage(ChatRole.Tool, [new FunctionResultContent(item.CallId, toolResult1)]);
+				messages.Add(toolMessage1);
+				continue;
+			}
+			else if (item.Name == "get_skills")
+			{
+
+				continue;
+			}
+
 			string command = item.Arguments != null && item.Arguments.TryGetValue("command", out object? cmdObj) ? cmdObj?.ToString() ?? "" : "";
 			string toolResultJson = RunShellCommand(command);
 			
@@ -218,23 +274,6 @@ while (true)
 		break;
 	}
 }
+*/
 
 
-
-/// <summary>HTTP handler that throws with response body when status is not success (e.g. 500).</summary>
-sealed class DetailedHttpFailureHandler : DelegatingHandler
-{
-	public DetailedHttpFailureHandler() : base(new HttpClientHandler()) { }
-
-	protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-	{
-		var response = await base.SendAsync(request, cancellationToken);
-		if (!response.IsSuccessStatusCode)
-		{
-			var body = await response.Content.ReadAsStringAsync(cancellationToken);
-			throw new HttpRequestException(
-				$"Response status code does not indicate success: {(int)response.StatusCode} ({response.ReasonPhrase}). Response body: {body}");
-		}
-		return response;
-	}
-}
