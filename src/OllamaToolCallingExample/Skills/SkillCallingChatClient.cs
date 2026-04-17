@@ -1,6 +1,8 @@
-﻿using System.Runtime.CompilerServices;
+﻿using Microsoft.Extensions.AI;
+using OllamaSharp.Tools;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
-using Microsoft.Extensions.AI;
+using System.Threading;
 
 namespace OllamaToolCallingExample.Skills;
 
@@ -8,14 +10,13 @@ namespace OllamaToolCallingExample.Skills;
 public class SkillCallingChatClient : DelegatingChatClient
 {
 	private const int MaximumIterationsPerRequest = 40;
-
-	/// <summary>
-	/// When set, <c>run_shell</c> tool calls are executed via this delegate. The caller's message list is never mutated.
-	/// </summary>
-	public Func<string, string>? ShellCommand { get; set; }
+	
+	public Skills Skills { get; set; }
 
 	/// <summary>Optional override for <c>get_skills</c> text; defaults to a short built-in catalog.</summary>
 	public Func<string>? SkillsCatalog { get; set; }
+
+	//private Skills _skills = new Skills();
 
 	public SkillCallingChatClient(IChatClient innerClient, IServiceProvider? functionInvocationServices = null) : base(innerClient)
 	{
@@ -126,7 +127,7 @@ public class SkillCallingChatClient : DelegatingChatClient
 
 			cancellationToken.ThrowIfCancellationRequested();
 
-			string toolResult;
+			string toolResult = null;
 			switch (item.Name)
 			{
 				case "learn_skill":
@@ -134,30 +135,32 @@ public class SkillCallingChatClient : DelegatingChatClient
 					string cmd = item.Arguments is not null && item.Arguments.TryGetValue("learnSkillCommand", out object? ler)
 						? ler?.ToString() ?? ""
 						: "";
-					toolResult = LearnSkill(cmd);
+					toolResult = Skills.LearnSkill(cmd);
 					break;
 				}
 				case "get_skills":
-					toolResult = SkillsCatalog?.Invoke() ?? DefaultSkillsCatalog;
+					toolResult = SkillsCatalog?.Invoke() ?? Skills.GetSkills();
 					break;
 				case "run_shell":
 				{
 					string command = item.Arguments is not null && item.Arguments.TryGetValue("command", out object? cmdObj)
 						? cmdObj?.ToString() ?? ""
 						: "";
-					if (ShellCommand is null)
-					{
-						toolResult = JsonSerializer.Serialize(new
-						{
-							error = "Shell execution is not configured. Set SkillCallingChatClient.ShellCommand when building the client."
-						});
-					}
-					else
-					{
-						toolResult = ShellCommand(command);
-						await AppendScreenshotFollowUpAsync(command, extraMessages, cancellationToken).ConfigureAwait(false);
-					}
-
+					
+					toolResult = Shell.RunShellCommand(command);
+					//await AppendScreenshotFollowUpAsync(command, toolResult, extraMessages, cancellationToken).ConfigureAwait(false);
+					/*var re = await AppendScreenshotFollowUpBinAsync(item.CallId, command, toolResult, extraMessages, cancellationToken).ConfigureAwait(false);
+					if (re != null)
+						resultContents.Add(re);*/
+					break;
+				}
+				case "look_at_image_file":
+				{
+					string cmd = item.Arguments is not null && item.Arguments.TryGetValue("imageFilePath", out object? ler)
+						? ler?.ToString() ?? ""
+						: "";
+					var imageResult = Skills.LookAtImageFile(cmd);
+					resultContents.Add(new FunctionResultContent(item.CallId, imageResult));
 					break;
 				}
 				default:
@@ -165,7 +168,9 @@ public class SkillCallingChatClient : DelegatingChatClient
 					break;
 			}
 
-			resultContents.Add(new FunctionResultContent(item.CallId, toolResult));
+			if (toolResult != null)
+				resultContents.Add(new FunctionResultContent(item.CallId, toolResult));
+			
 			item.InformationalOnly = true;
 		}
 
@@ -178,8 +183,35 @@ public class SkillCallingChatClient : DelegatingChatClient
 		return extraMessages;
 	}
 
+	/*
+	private static async Task<FunctionResultContent> AppendScreenshotFollowUpBinAsync(string callID,
+		string command, string toolResult,
+		List<ChatMessage> extraMessages,
+		CancellationToken cancellationToken)
+	{
+		if (!command.Contains("screenshot", StringComparison.Ordinal))
+			return null;
+
+		var parts = command.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+		for (int i = 0; i < parts.Length; i++)
+		{
+			if (parts[i] != "screenshot" || i + 1 >= parts.Length)
+				continue;
+
+			string fileName = parts[i + 1];
+			if (!File.Exists(fileName))
+				continue;
+
+			byte[] imageBytes = await File.ReadAllBytesAsync(fileName, cancellationToken).ConfigureAwait(false);
+			var imageContent = new DataContent(imageBytes, "image/png");
+			//Console.WriteLine($"\n[System] Attached image: {fileName}");
+			return new FunctionResultContent(callID, imageContent);			
+		}
+		return null;
+	}
+	*/
 	private static async Task AppendScreenshotFollowUpAsync(
-		string command,
+		string command, string toolResult,
 		List<ChatMessage> extraMessages,
 		CancellationToken cancellationToken)
 	{
@@ -252,20 +284,5 @@ public class SkillCallingChatClient : DelegatingChatClient
 			ResponseId = messageId,
 			MessageId = messageId,
 			Role = message.Role,
-		};
-
-	private const string DefaultSkillsCatalog =
-		"*browser*: use the local webbrowser\r\n*file*: read or write files";
-
-	private static string LearnSkill(string command)
-	{
-		_ = command;
-		return @"When browsing the web use run_shell and then:
-1. Use 'agent-browser open <url>' to navigate. Cookie/consent dialogs are handled automatically.
-2a. Run 'agent-browser screenshot [path]' to take a screenshot.
-2b. Run 'agent-browser snapshot' to see the page structure and find element references (e.g., [ref=e12]).
-3. Use 'agent-browser click @ref' to click elements by their reference ID from the snapshot.
-4. Use 'agent-browser get text @ref' to extract text from elements.
-5. IMPORTANT: After opening a page, always run 'agent-browser snapshot' to inspect the content and find what you need.";
-	}
+		};	
 }
