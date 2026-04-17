@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -50,6 +51,11 @@ use run_shell and then:
 4. Run: agent-browser reload
 5. Run: agent-browser wait 3000";
 
+			if (command.Contains("look_at_image_file"))
+			{
+				return @"To get access to images on the local machine just call the tool: 'look_at_image_file' and pass the imageFilePath as an argument.";
+			}
+
 			return $"Skill '{command}' not found";
 		}
 
@@ -61,6 +67,28 @@ use run_shell and then:
 			byte[] imageBytes = File.ReadAllBytes(imageFilePath);
 			var imageContent = new DataContent(imageBytes, "image/png");			
 			return imageContent;
+		}
+
+		/// <summary>Writes UTF-8 text to a file, creating parent directories when needed. Overwrites if the file exists.</summary>
+		public string WriteFile(string filePath, string content)
+		{
+			if (string.IsNullOrWhiteSpace(filePath))
+				return "Error: filePath is empty.";
+
+			try
+			{
+				var fullPath = Path.GetFullPath(filePath);
+				var directory = Path.GetDirectoryName(fullPath);
+				if (!string.IsNullOrEmpty(directory))
+					Directory.CreateDirectory(directory);
+
+				File.WriteAllText(fullPath, content);
+				return $"Wrote {content.Length} character(s) to '{fullPath}'.";
+			}
+			catch (Exception ex)
+			{
+				return $"Error writing file: {ex.Message}";
+			}
 		}
 	}
 }

@@ -174,6 +174,17 @@ public class SkillCallingChatClient : DelegatingChatClient
 				}
 				break;
 			}
+			case "write_file":
+			{
+				string path = item.Arguments is not null && item.Arguments.TryGetValue("filePath", out object? pathObj)
+					? pathObj?.ToString() ?? ""
+					: "";
+				string text = item.Arguments is not null && item.Arguments.TryGetValue("content", out object? contentObj)
+					? contentObj?.ToString() ?? ""
+					: "";
+				toolResult = Skills.WriteFile(path, text);
+				break;
+			}
 				default:
 					toolResult = JsonSerializer.Serialize(new { error = $"Unhandled tool: {item.Name}" });
 					break;
@@ -194,62 +205,7 @@ public class SkillCallingChatClient : DelegatingChatClient
 		return extraMessages;
 	}
 
-	/*
-	private static async Task<FunctionResultContent> AppendScreenshotFollowUpBinAsync(string callID,
-		string command, string toolResult,
-		List<ChatMessage> extraMessages,
-		CancellationToken cancellationToken)
-	{
-		if (!command.Contains("screenshot", StringComparison.Ordinal))
-			return null;
-
-		var parts = command.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-		for (int i = 0; i < parts.Length; i++)
-		{
-			if (parts[i] != "screenshot" || i + 1 >= parts.Length)
-				continue;
-
-			string fileName = parts[i + 1];
-			if (!File.Exists(fileName))
-				continue;
-
-			byte[] imageBytes = await File.ReadAllBytesAsync(fileName, cancellationToken).ConfigureAwait(false);
-			var imageContent = new DataContent(imageBytes, "image/png");
-			//Console.WriteLine($"\n[System] Attached image: {fileName}");
-			return new FunctionResultContent(callID, imageContent);			
-		}
-		return null;
-	}
-	*/
-	private static async Task AppendScreenshotFollowUpAsync(
-		string command, string toolResult,
-		List<ChatMessage> extraMessages,
-		CancellationToken cancellationToken)
-	{
-		if (!command.Contains("screenshot", StringComparison.Ordinal))
-			return;
-
-		var parts = command.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-		for (int i = 0; i < parts.Length; i++)
-		{
-			if (parts[i] != "screenshot" || i + 1 >= parts.Length)
-				continue;
-
-			string fileName = parts[i + 1];
-			if (!File.Exists(fileName))
-				continue;
-
-			byte[] imageBytes = await File.ReadAllBytesAsync(fileName, cancellationToken).ConfigureAwait(false);
-			var imageContent = new DataContent(imageBytes, "image/png");
-			Console.WriteLine($"\n[System] Attached image: {fileName}");
-			extraMessages.Add(new ChatMessage(ChatRole.User, [
-				new TextContent("[System] Here is the screenshot you just took. Describe what you see in the pictures."),
-				imageContent
-			]));
-			break;
-		}
-	}
-
+	
 	private static bool CopyFunctionCalls(IList<AIContent> content, ref List<FunctionCallContent>? functionCalls)
 	{
 		bool any = false;

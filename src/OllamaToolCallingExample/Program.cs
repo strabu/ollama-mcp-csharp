@@ -17,24 +17,28 @@ ChatOptions chatOptions = new()
 
 		AIFunctionFactory.Create((string imageFilePath) => _skills.LookAtImageFile(imageFilePath),
 			"look_at_image_file", $"Returns the data of an Image File"),
+
+		AIFunctionFactory.Create((string filePath, string content) => _skills.WriteFile(filePath, content),
+			"write_file", "Writes UTF-8 text to a file. Creates parent directories if needed. Overwrites an existing file."),
 	]
 };
 
 //https://agentskills.io/client-implementation/adding-skills-support#frontmatter-extraction
 //https://github.com/dotnet/extensions/tree/main/src/Libraries/Microsoft.Extensions.AI.Abstractions
 
-//string modelId = "ministral-3:8b"; //the best
+//string modelId = "ministral-3:8b"; //good but not as good as gemma4
 //string modelId = "qwen3:8b";
 //string modelId = "qwen3.5:9b";
-string modelId = "gemma4:e4b";
+//string modelId = "qwen3.6:latest"; //very good
+string modelId = "gemma4:e4b"; //the best
 
 var ollamaUri = new Uri("http://localhost:11434/");
 using var httpClient = new HttpClient(new DetailedHttpFailureHandler()) { BaseAddress = ollamaUri };
 var ollama = new OllamaApiClient(httpClient, modelId);
 
 var chatClient = new ChatClientBuilder(ollama)
-	.ConfigureOptions(c => c.AddOllamaOption(OllamaOption.NumCtx, 16384))
-	//.ConfigureOptions(c => c.AddOllamaOption(OllamaOption.NumCtx, 32768))
+	//.ConfigureOptions(c => c.AddOllamaOption(OllamaOption.NumCtx, 16384))
+	.ConfigureOptions(c => c.AddOllamaOption(OllamaOption.NumCtx, 32768))
 	// .UseFunctionInvocation() // We will handle this manually
 	.UseConsoleLogger()
 	//.UseSkills(configure: c => c.ShellCommand = RunShellCommand)
@@ -43,7 +47,7 @@ var chatClient = new ChatClientBuilder(ollama)
 
 List<ChatMessage> messages =
 [
-	
+
 	new(ChatRole.System, $@"You are a helpful assistant with access to many tools and skills. 
 Skills are **NOT** TOOLS. 
 You *must* always call learn_skill(skillName) before you can use a skill. 
@@ -53,14 +57,16 @@ These are the skills (NOT tools): {_skills.GetSkills()}"),
 	//new(ChatRole.System, $@"You are a helpful assistant with access to many tools and skills."),
 
 	//new(ChatRole.User, "List files in the current directory")
+	//new(ChatRole.User, "List files in the current directory")
 	//new(ChatRole.User, "What time is it?")
+new(ChatRole.User, "1) Write a Hello-World program in C# 2) put it into c:\\temp\\hello\\program.cs")
 	
 	//new(ChatRole.User, "What are the tech-news headlines in derstandard.at? (accept/click consent if necessary)")	
 	//new(ChatRole.User, "Browse to derstandard.at? Take a screenshot from the page and tell me what the pictures on the page show.")
 	
 	//new(ChatRole.User, "Browse to derstandard.at/web ? Take a screenshot from the page and tell me what the pictures on the page show.")
 
-new(ChatRole.User, "What do you see in: C:\\Users\\Alex\\Pictures\\S1.png ?")
+//new(ChatRole.User, "What do you see in: C:\\Users\\Alex\\Pictures\\S1.png ?")
 
 
 //new(ChatRole.User, "Search yahoo finance for the latest SEC 13f-filing from Berkshire Hathaway.")
@@ -69,7 +75,7 @@ new(ChatRole.User, "What do you see in: C:\\Users\\Alex\\Pictures\\S1.png ?")
 ];
 
 //while (true)
-//{
+{
 	await foreach (var update in chatClient.GetStreamingResponseAsync(messages, chatOptions))
 	{
 		var u = update;
@@ -88,5 +94,5 @@ new(ChatRole.User, "What do you see in: C:\\Users\\Alex\\Pictures\\S1.png ?")
 			}
 		}
 	}
-//}
+}
 
