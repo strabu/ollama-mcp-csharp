@@ -59,8 +59,7 @@ use run_shell and then:
 				return null;
 
 			byte[] imageBytes = File.ReadAllBytes(imageFilePath);
-			var imageContent = new DataContent(imageBytes, "image/png");
-
+			var imageContent = new DataContent(imageBytes, "image/png");			
 			return imageContent;
 		}
 	}

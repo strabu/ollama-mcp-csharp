@@ -57,7 +57,11 @@ These are the skills (NOT tools): {_skills.GetSkills()}"),
 	
 	//new(ChatRole.User, "What are the tech-news headlines in derstandard.at? (accept/click consent if necessary)")	
 	//new(ChatRole.User, "Browse to derstandard.at? Take a screenshot from the page and tell me what the pictures on the page show.")
-	new(ChatRole.User, "Browse to derstandard.at/web ? Take a screenshot from the page and tell me what the pictures on the page show.")
+	
+	//new(ChatRole.User, "Browse to derstandard.at/web ? Take a screenshot from the page and tell me what the pictures on the page show.")
+
+new(ChatRole.User, "What do you see in: C:\\Users\\Alex\\Pictures\\S1.png ?")
+
 
 //new(ChatRole.User, "Search yahoo finance for the latest SEC 13f-filing from Berkshire Hathaway.")
 	//new(ChatRole.User, "Get the News page from www.orf.at and make me a summary about Iran.")

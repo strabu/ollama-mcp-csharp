@@ -154,15 +154,26 @@ public class SkillCallingChatClient : DelegatingChatClient
 						resultContents.Add(re);*/
 					break;
 				}
-				case "look_at_image_file":
+			case "look_at_image_file":
+			{
+				string cmd = item.Arguments is not null && item.Arguments.TryGetValue("imageFilePath", out object? ler)
+					? ler?.ToString() ?? ""
+					: "";
+				var imageResult = Skills.LookAtImageFile(cmd);
+				if (imageResult != null)
 				{
-					string cmd = item.Arguments is not null && item.Arguments.TryGetValue("imageFilePath", out object? ler)
-						? ler?.ToString() ?? ""
-						: "";
-					var imageResult = Skills.LookAtImageFile(cmd);
-					resultContents.Add(new FunctionResultContent(item.CallId, imageResult));
-					break;
+					toolResult = $"Image file '{cmd}' loaded successfully.";
+					extraMessages.Add(new ChatMessage(ChatRole.User, [
+						new TextContent($"[System] Here is the image file '{cmd}':"),
+						imageResult
+					]));
 				}
+				else
+				{
+					toolResult = $"Image file not found: {cmd}";
+				}
+				break;
+			}
 				default:
 					toolResult = JsonSerializer.Serialize(new { error = $"Unhandled tool: {item.Name}" });
 					break;
